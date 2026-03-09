@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from quantizer import VectorQuantizer, VectorQuantizerEMA
 
 class ConvBlock(nn.Module):
   def __init__(self, in_ch, out_ch, k = 3, s = 1, p = 1, use_gn = True, gn_groups = 8):
@@ -62,21 +61,20 @@ class Decoder(nn.Module):
     return self.net(x)
 
 class VQVAE(nn.Module):
-  def __init__(self, in_channels = 1, hidden = 128, z_channels = 64, num_embeddings=512, commitment_cost=0.25, decay=0.995, epsilon=1e-5, num_groups=8):
+  def __init__(self, quantizer, in_channels = 1, hidden = 128, z_channels = 64, num_groups=8):
     super().__init__()
 
     self.encoder = Encoder(in_channels=in_channels, hidden=hidden, z_channels=z_channels)
     self.pre_vq_norm = nn.GroupNorm(num_groups=num_groups, num_channels=z_channels)
 
-    # self.vq = VectorQuantizer(num_embeddings=num_embeddings, embedding_dim=z_channels, commitment_cost=commitment_cost)
-    self.vq = VectorQuantizerEMA(decay=decay, epsilon=epsilon, num_embeddings=num_embeddings, embedding_dim=z_channels, commitment_cost=commitment_cost)
+    self.quantizer = quantizer
 
     self.decoder = Decoder(out_channels=in_channels, hidden=hidden, z_channels=z_channels)
 
   def forward(self, x):
     z_e = self.encoder(x)
     z_e = self.pre_vq_norm(z_e)
-    z_q, vq_loss, perplexity, indices = self.vq(z_e)
+    z_q, vq_loss, perplexity, indices = self.quantizer(z_e)
     x_recon = self.decoder(z_q)
 
     return x_recon, vq_loss, perplexity, indices
